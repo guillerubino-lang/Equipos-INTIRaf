@@ -351,8 +351,34 @@ async function resolveColumnsForSheet(sheetName, fieldHeaders) {
       nuevosEncabezados.push(fieldHeaders[key]);
       nextCol++;
     });
+    const ultimaColNecesaria = nextCol - 1;
+
+    // La grilla real de la hoja puede tener menos columnas de las que hacen
+    // falta para el encabezado nuevo — si no se agranda antes, Sheets
+    // rechaza la escritura con 400 ("exceeds grid limits").
+    const metaRes = await gapi.client.sheets.spreadsheets.get({
+      spreadsheetId: CONFIG.SPREADSHEET_ID,
+      fields: "sheets.properties",
+    });
+    const sheetMeta = metaRes.result.sheets.find((s) => s.properties.title === sheetName);
+    const columnasActuales = (sheetMeta && sheetMeta.properties.gridProperties && sheetMeta.properties.gridProperties.columnCount) || 0;
+    if (sheetMeta && columnasActuales < ultimaColNecesaria) {
+      await gapi.client.sheets.spreadsheets.batchUpdate({
+        spreadsheetId: CONFIG.SPREADSHEET_ID,
+        resource: {
+          requests: [{
+            appendDimension: {
+              sheetId: sheetMeta.properties.sheetId,
+              dimension: "COLUMNS",
+              length: ultimaColNecesaria - columnasActuales,
+            },
+          }],
+        },
+      });
+    }
+
     const desde = colIndexToLetter(headerRow.length + 1);
-    const hasta = colIndexToLetter(nextCol - 1);
+    const hasta = colIndexToLetter(ultimaColNecesaria);
     await gapi.client.sheets.spreadsheets.values.update({
       spreadsheetId: CONFIG.SPREADSHEET_ID,
       range: `${sheetName}!${desde}1:${hasta}1`,
