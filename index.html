@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Equipos · INTI Rafaela</title>
+<meta name="theme-color" content="#1F3350" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://apis.google.com https://accounts.google.com https://*.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com https://*.googleapis.com; base-uri 'self'; form-action 'self' https://accounts.google.com;" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- Fondo tipo papel milimetrado -->
+<div class="grid-bg" aria-hidden="true"></div>
+
+<header class="appbar">
+  <div class="appbar-title">
+    <span class="tag-dot" id="connDot" title="Estado de conexión"></span>
+    <h1>Equipos<span class="appbar-sub">INTI Rafaela</span></h1>
+  </div>
+  <div class="appbar-actions">
+    <a href="manual.html" target="_blank" rel="noopener" class="btn btn-ghost-invert">📖 Manual</a>
+    <button id="btnInstall" class="btn btn-ghost-invert hidden">⬇ Instalar app</button>
+    <button id="btnSignIn" class="btn btn-ghost-invert">Conectar con Google</button>
+    <button id="btnSignOut" class="btn btn-ghost-invert hidden">Salir</button>
+  </div>
+</header>
+
+<main id="app" class="hidden">
+
+  <section class="toolbar">
+    <div class="search-wrap">
+      <input id="searchInput" type="search" placeholder="Buscar por código, descripción, modelo, serie..." autocomplete="off" />
+      <button type="button" id="btnScan" class="btn-scan" title="Escanear código de barras">📷</button>
+    </div>
+    <div class="filters" id="filtersRow">
+      <select id="filterUbicacion"><option value="">Todas las ubicaciones</option></select>
+      <select id="filterCategoria"><option value="">Todas las categorías</option></select>
+      <select id="filterEstado">
+        <option value="">Todos los estados</option>
+        <option value="Pegado">Pegado</option>
+        <option value="Pendiente de pegado">Pendiente de pegado</option>
+        <option value="Imposibilidad de pegado">Imposibilidad de pegado</option>
+      </select>
+      <select id="filterDepartamento"><option value="">Todos los departamentos</option></select>
+      <select id="filterNuevoLugar"><option value="">Todos los lugares</option></select>
+      <select id="filterEstadoEquipo"><option value="">Todos los estados de equipo</option></select>
+      <select id="filterVerificacion">
+        <option value="">Todo el relevamiento</option>
+        <option value="Pendiente">Pendientes</option>
+        <option value="Encontrado">Encontrados</option>
+        <option value="No encontrado">No encontrados</option>
+      </select>
+    </div>
+    <div class="count-row">
+      <span id="resultCount"></span> <span id="progressCounter" class="progress-counter hidden"></span>
+      <button type="button" id="btnAltas" class="btn-report">📋 Altas pendientes (0)</button>
+      <button type="button" id="btnReport" class="btn-report">📄 Generar informe PDF</button>
+    </div>
+  </section>
+
+  <section id="listWrap" class="list-wrap">
+    <div id="loadingMsg" class="empty-state">Cargando equipos…</div>
+    <div id="cardsGrid" class="cards-grid"></div>
+    <div id="emptyState" class="empty-state hidden">No se encontraron equipos con ese filtro.</div>
+  </section>
+
+</main>
+
+<section id="gate" class="gate">
+  <div class="gate-card">
+    <div class="gate-tag">
+      <span class="punch"></span>
+      <span class="gate-tag-label">FICHA DE EQUIPO</span>
+    </div>
+    <h2>Base de equipos</h2>
+    <p>Conectate con tu cuenta de Google de INTI para ver y editar la planilla y las fotos del Drive compartido.</p>
+    <button id="btnSignInGate" class="btn btn-primary">Conectar con Google</button>
+    <p class="gate-hint" id="configHint"></p>
+  </div>
+</section>
+
+<!-- Panel de detalle / edición -->
+<div id="overlay" class="overlay hidden"></div>
+<aside id="detailPanel" class="detail-panel hidden" aria-hidden="true">
+  <div class="detail-header">
+    <span class="tag-dot" id="detailDot"></span>
+    <h2 id="detailTitle">Nuevo equipo</h2>
+    <button id="btnCloseDetail" class="btn-icon" aria-label="Cerrar">✕</button>
+  </div>
+
+  <div class="detail-body">
+    <div id="verifRow" class="verif-row-detail">
+      <button type="button" id="btnVerifOk" class="verif-btn verif-btn-ok">✓ Encontrado</button>
+      <button type="button" id="btnVerifMissing" class="verif-btn verif-btn-missing">✕ No encontrado</button>
+    </div>
+    <p id="verifInfo" class="audit-info hidden"></p>
+    <p id="auditInfo" class="audit-info hidden"></p>
+    <div id="groupAH" class="locked-group">
+    <p class="group-label" id="lockNotice">🔒 Estos datos son del alta original y no se pueden modificar.</p>
+    <p id="patrimonioInfo" class="audit-info hidden"></p>
+    <div class="field-row two">
+      <label>N° inventario
+        <input id="fInventario" type="text" placeholder="105C000000 / S/D" />
+      </label>
+      <label>Estado (oblea)
+        <select id="fEstado">
+          <option>Pegado</option>
+          <option>Pendiente de pegado</option>
+          <option>Imposibilidad de pegado</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="field-row two">
+      <label>Código catálogo
+        <input id="fCodigo" type="text" />
+      </label>
+      <label>Categoría
+        <input id="fCategoria" type="text" list="dlCategorias" />
+        <datalist id="dlCategorias"></datalist>
+      </label>
+    </div>
+
+    <label class="field-row">Descripción del bien
+      <textarea id="fDescripcion" rows="2"></textarea>
+    </label>
+
+    <div class="field-row two">
+      <label>Modelo
+        <input id="fModelo" type="text" />
+      </label>
+      <label>Serie
+        <input id="fSerie" type="text" />
+      </label>
+    </div>
+
+    <label class="field-row">Ubicación
+      <input id="fUbicacion" type="text" list="dlUbicaciones" />
+      <datalist id="dlUbicaciones"></datalist>
+    </label>
+    <label class="field-row">Responsable Patrimonial
+      <input id="fResponsablePatrimonial" type="text" disabled />
+    </label>
+    <label class="field-row">Proveedor
+      <input id="fProveedor" type="text" disabled />
+    </label>
+    </div><!-- /groupAH -->
+
+    <div class="editable-group">
+    <p class="group-label group-label-edit">✏️ Estos campos sí se pueden editar cuando quieras.</p>
+    <div class="field-row two">
+      <label>Departamento
+        <select id="fDepartamento"></select>
+      </label>
+      <label>Estado de equipo o bien
+        <select id="fEstadoEquipo"></select>
+      </label>
+    </div>
+    <label class="field-row hidden" id="wrapDepartamentoOtro">Especificar departamento
+      <input id="fDepartamentoOtro" type="text" placeholder="Escribí el departamento" />
+    </label>
+    <label class="field-row hidden" id="wrapEstadoEquipoOtro">Especificar estado
+      <input id="fEstadoEquipoOtro" type="text" placeholder="Escribí el estado" />
+    </label>
+
+    <label class="field-row">Nuevo Lugar
+      <div class="select-with-add">
+        <select id="fNuevoLugar"></select>
+        <button type="button" id="btnAddLugar" class="btn-icon-add" title="Agregar un lugar nuevo a la lista">+</button>
+      </div>
+    </label>
+    <label class="field-row hidden" id="wrapNuevoLugarOtro">Especificar lugar
+      <input id="fNuevoLugarOtro" type="text" placeholder="Escribí el lugar" />
+    </label>
+
+    <label class="field-row">Código SGC
+      <input id="fCodigoSGC" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Solo números" />
+    </label>
+
+    <label class="field-row">Observaciones
+      <textarea id="fObservaciones" rows="2"></textarea>
+    </label>
+    </div><!-- /editable-group -->
+
+    <div class="field-row">
+      <div class="gallery-head">
+        <span>Fotos</span>
+        <label class="btn btn-secondary btn-upload">
+          Subir foto
+          <input id="fPhotoInput" type="file" accept="image/*" capture="environment" multiple hidden />
+        </label>
+      </div>
+      <div id="uploadStatus" class="upload-status hidden"></div>
+      <div id="gallery" class="gallery"></div>
+      <p id="galleryEmpty" class="gallery-empty hidden">Todavía no hay fotos de este equipo.</p>
+    </div>
+  </div>
+
+  <div class="detail-footer">
+    <button id="btnCancel" class="btn btn-ghost">Cancelar</button>
+    <button id="btnSave" class="btn btn-primary">Guardar</button>
+  </div>
+</aside>
+
+<div id="toast" class="toast hidden"></div>
+
+<div id="lightbox" class="lightbox hidden">
+  <button id="btnCloseLightbox" class="lightbox-close" aria-label="Cerrar">✕</button>
+  <img id="lightboxImg" class="lightbox-img" alt="Foto ampliada" />
+  <a id="lightboxDriveLink" class="lightbox-drive-link" href="#" target="_blank" rel="noopener">Abrir en Drive ↗</a>
+</div>
+
+<!-- Vista imprimible del informe PDF: oculta en pantalla, solo visible al imprimir -->
+<div id="printReport"></div>
+
+<!-- Escáner de código de barras -->
+<div id="scannerOverlay" class="scanner-overlay hidden">
+  <video id="scannerVideo" autoplay playsinline muted></video>
+  <div class="scanner-frame"></div>
+  <p class="scanner-hint">Apuntá al código de barras de la etiqueta</p>
+  <button id="btnCloseScanner" class="lightbox-close" aria-label="Cerrar">✕</button>
+</div>
+
+<!-- Vista de Altas pendientes -->
+<div id="altasListView" class="altas-list-view hidden">
+  <div class="altas-list-header">
+    <button id="btnCloseAltasList" class="btn-icon" aria-label="Volver">← Volver</button>
+    <h2>Altas pendientes</h2>
+    <button id="btnReportAltas" class="btn btn-secondary">📄 Informe</button>
+  </div>
+  <div id="altasCardsGrid" class="cards-grid"></div>
+  <div id="altasEmptyState" class="empty-state hidden">No hay altas pendientes todavía.</div>
+</div>
+
+<!-- Formulario de alta pendiente (hallazgo nuevo) -->
+<div id="overlayAlta" class="overlay hidden"></div>
+<aside id="altaPanel" class="detail-panel hidden">
+  <div class="detail-header">
+    <h2 id="altaTitle">Nuevo hallazgo</h2>
+    <button id="btnCloseAlta" class="btn-icon" aria-label="Cerrar">✕</button>
+  </div>
+  <div class="detail-body">
+    <label class="field-row">N° inventario (escaneado)
+      <input id="faInventario" type="text" placeholder="Puede corresponder a otra repartición" />
+    </label>
+    <label class="field-row">Descripción del bien
+      <textarea id="faDescripcion" rows="2"></textarea>
+    </label>
+    <div class="field-row two">
+      <label>Modelo <input id="faModelo" type="text" /></label>
+      <label>Serie <input id="faSerie" type="text" /></label>
+    </div>
+    <div class="field-row two">
+      <label>Departamento <select id="faDepartamento"></select></label>
+      <label>Nuevo Lugar <select id="faNuevoLugar"></select></label>
+    </div>
+    <label class="field-row hidden" id="wrapFaDepartamentoOtro">Especificar departamento
+      <input id="faDepartamentoOtro" type="text" placeholder="Escribí el departamento" />
+    </label>
+    <label class="field-row">Estado de equipo o bien
+      <select id="faEstadoEquipo"></select>
+    </label>
+    <label class="field-row">Código SGC
+      <input id="faCodigoSGC" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Solo números" />
+    </label>
+    <label class="field-row">Observaciones
+      <textarea id="faObservaciones" rows="2"></textarea>
+    </label>
+    <div class="field-row">
+      <div class="gallery-head">
+        <span>Foto (opcional)</span>
+        <label class="btn btn-secondary btn-upload">Subir foto
+          <input id="faPhotoInput" type="file" accept="image/*" capture="environment" multiple hidden />
+        </label>
+      </div>
+      <div id="altaUploadStatus" class="upload-status hidden"></div>
+      <div id="altaGallery" class="gallery"></div>
+      <p id="altaGalleryEmpty" class="gallery-empty hidden">Guardá el hallazgo antes de subir fotos.</p>
+    </div>
+  </div>
+  <div class="detail-footer">
+    <button id="btnCancelAlta" class="btn btn-ghost">Cancelar</button>
+    <button id="btnSaveAlta" class="btn btn-primary">Guardar hallazgo</button>
+  </div>
+</aside>
+
+<script src="config.js"></script>
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
+<script src="app.js"></script>
+</body>
+</html>
