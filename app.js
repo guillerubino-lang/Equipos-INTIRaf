@@ -1237,12 +1237,17 @@ function hideLightboxUI() {
 }
 
 window.addEventListener("popstate", () => {
+  const manualOpen = !$("manualOverlay").classList.contains("hidden");
   const scannerOpen = !$("scannerOverlay").classList.contains("hidden");
   const lightboxOpen = !$("lightbox").classList.contains("hidden");
   const detailOpen = !$("detailPanel").classList.contains("hidden");
   const altaOpen = $("altaPanel") && !$("altaPanel").classList.contains("hidden");
   const altasListOpen = $("altasListView") && !$("altasListView").classList.contains("hidden");
 
+  if (manualOpen) {
+    hideManualUI();
+    return;
+  }
   if (scannerOpen) {
     hideScannerUI();
     return;
@@ -1896,6 +1901,24 @@ function closeScanner() {
   else hideScannerUI();
 }
 
+// ---------- Manual de usuario (dentro de la app) ----------
+
+function openManual() {
+  $("manualIframe").src = "manual.html";
+  $("manualOverlay").classList.remove("hidden");
+  pushHistoryLayer();
+}
+
+function hideManualUI() {
+  $("manualOverlay").classList.add("hidden");
+  $("manualIframe").src = ""; // libera la memoria del iframe al cerrar
+}
+
+function closeManual() {
+  if (!$("manualOverlay").classList.contains("hidden")) history.back();
+  else hideManualUI();
+}
+
 function scanLoop() {
   if (!scannerActive) return;
   const video = $("scannerVideo");
@@ -1976,6 +1999,8 @@ $("filterVerificacion").addEventListener("change", renderList);
 $("btnReport").addEventListener("click", generatePdfReport);
 $("btnScan").addEventListener("click", openScanner);
 $("btnCloseScanner").addEventListener("click", closeScanner);
+$("btnManual").addEventListener("click", openManual);
+$("btnCloseManual").addEventListener("click", closeManual);
 
 $("btnAltas").addEventListener("click", openAltasListView);
 $("btnCloseAltasList").addEventListener("click", closeAltasListView);
@@ -2035,7 +2060,22 @@ buildSelectWithOtro($("fEstadoEquipo"), ESTADO_EQUIPO_OPCIONES, "(sin definir)",
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    // updateViaCache: "none" es la parte clave — obliga al navegador a
+    // chequear sw.js siempre en la red, nunca contra la caché HTTP. Sin
+    // esto, si el hosting cachea sw.js, el navegador compara "versión
+    // vieja contra versión vieja" y nunca detecta que hay una actualización
+    // (por eso antes hacía falta incógnito o borrar caché a mano).
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(() => {});
+  });
+
+  // Apenas un service worker nuevo toma el control, recargamos la página
+  // una sola vez — así la versión nueva se ve al toque, sin que haga falta
+  // ningún gesto manual del usuario.
+  let yaRecargo = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (yaRecargo) return;
+    yaRecargo = true;
+    window.location.reload();
   });
 }
 

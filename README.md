@@ -211,13 +211,18 @@ Si escaneás un código y no aparece ningún resultado, la app pregunta si quer�
 - Tiene su propio botón de **informe PDF**, con los campos que sí tienen estos registros.
 
 ## Manual de usuario
-Hay un manual para el equipo de trabajo en `manual.html`, accesible desde el botón **"📖 Manual"** en la barra de arriba de la app, o directo por URL agregando `/manual.html` a la dirección publicada (ej. `https://tu-sitio.netlify.app/manual.html`). No requiere login — se puede compartir el link solo, incluso a alguien que todavía no tiene acceso a la planilla.
+Hay un manual para el equipo de trabajo en `manual.html`. Se puede acceder de dos formas:
+- **Desde dentro de la app**: botón **"📖 Manual"** en la barra de arriba — lo abre en una ventana superpuesta, sin salir de la app (así nunca se pierde la sesión al volver — antes, cuando abría como pestaña nueva, en algunos celulares reemplazaba la app y volver atrás forzaba un re-login).
+- **Directo por URL**, agregando `/manual.html` a la dirección publicada (ej. `https://tu-sitio.netlify.app/manual.html`) — no requiere login, se puede compartir el link solo, incluso a alguien que todavía no tiene acceso a la planilla. Desde la ventana superpuesta también hay un link "Abrir en pestaña nueva ↗" para quien prefiera verlo así.
 
 Es un archivo autocontenido (imágenes incrustadas en base64), pensado para explicarle a la gente del equipo cómo usar la app en el día a día — no confundir con este README, que es para quien la instala/mantiene.
 
 ## Instalar la app
 - **Android (Chrome):** aparece un botón **"⬇ Instalar app"** arriba a la derecha en cuanto el navegador detecta que se puede instalar. Un toque y queda como app en la pantalla de inicio, sin pasar por ninguna tienda.
 - **iPhone (Safari):** Apple no permite disparar la instalación desde el código — hay que hacerlo a mano: Compartir 🔗 → "Agregar a pantalla de inicio". No hay forma de evitar ese paso manual en iOS.
+
+## Actualizaciones automáticas (sin incógnito ni borrar caché)
+Versiones anteriores necesitaban entrar en incógnito o borrar caché a mano para ver los cambios después de cada publicación — ya no hace falta. El registro del service worker usa `updateViaCache: "none"`, que obliga al navegador a chequear siempre en la red si `sw.js` cambió (en vez de contra su caché HTTP, que era la causa real del problema). Apenas detecta una versión nueva, la página se recarga sola una vez. Con esto, después de publicar un cambio, alcanza con volver a entrar a la app normalmente — como mucho, puede tardar unos segundos en notar la versión nueva la primera vez que se abre después de publicar.
 
 ## Si "Conectar con Google" no reacciona
 Si el botón se queda pensando y no pasa nada, casi siempre es uno de estos tres (en este orden, de más a menos común):
