@@ -53,6 +53,7 @@ const ALTA_FIELD_HEADERS = {
   fechaDeteccion: "Fecha de detección",
   photosFolderId: "Id_foto",
   nombreCarpeta: "Nombre carpeta fotos",
+  fotoPortadaId: "ID foto portada",
 };
 let altaHeaderIndex = {};
 let altaMaxCol = 1;
@@ -83,6 +84,7 @@ let lugaresDinamicos = [...NUEVO_LUGAR_OPCIONES_DEFAULT]; // se reemplaza con lo
 const ESTADO_EQUIPO_OPCIONES = ["En uso", "Fuera de uso", "Para dar de baja por rotura o obsolescencia"];
 
 let tokenClient = null;
+let intentoSilencioso = false;
 let accessToken = null;
 let currentUserEmail = "";
 let gapiReady = false;
@@ -140,7 +142,17 @@ function maybeInitTokenClient() {
       callback: onTokenReceived,
       error_callback: (err) => {
         console.error("Error de Google Identity Services:", err);
-        showToast("Google rechazó la conexión: " + (err.type || err.message || "revisá la consola (F12)."), true);
+        if (intentoSilencioso) {
+          // Falló la reconexión automática (Chrome puede bloquear una
+          // ventana de login que se abre sin un clic directo del usuario).
+          // No alcanza con un toast que desaparece solo — lo dejamos bien
+          // visible en la propia pantalla de login.
+          intentoSilencioso = false;
+          $("configHint").textContent = "No se pudo reconectar solo (el navegador bloqueó la ventana de login). Tocá \"Conectar con Google\" de nuevo, abajo.";
+          $("configHint").style.color = "var(--rust)";
+        } else {
+          showToast("Google rechazó la conexión: " + (err.type || err.message || "revisá la consola (F12)."), true);
+        }
       },
     });
   } catch (err) {
@@ -150,12 +162,16 @@ function maybeInitTokenClient() {
   }
   // Reanudar sesión: el token guardado puede haber vencido del lado de
   // Google (dura ~1h), así que en vez de reusarlo a ciegas, pedimos uno
-  // nuevo en silencio (sin popup, mientras el permiso siga vigente).
+  // nuevo en silencio (sin popup visible, mientras el permiso siga
+  // vigente). Este intento puede fallar si el navegador bloquea la
+  // ventana por no venir de un clic directo — por eso marcamos la bandera,
+  // para poder explicarlo bien si el error_callback se dispara.
   const saved = localStorage.getItem("gtoken");
   const savedTs = parseInt(localStorage.getItem("gtoken_ts") || "0", 10);
   const vencida = !savedTs || (Date.now() - savedTs) > SESSION_MAX_DAYS * 24 * 60 * 60 * 1000;
   if (saved && !vencida) {
     currentUserEmail = localStorage.getItem("gemail") || "";
+    intentoSilencioso = true;
     tokenClient.requestAccessToken({ prompt: "" });
   } else if (saved && vencida) {
     // Sesión vieja: la limpiamos para que pida loguearse de nuevo.
@@ -184,6 +200,7 @@ window.addEventListener("load", () => {
 });
 
 function onTokenReceived(resp) {
+  intentoSilencioso = false;
   if (resp.error) {
     showToast("No se pudo conectar con Google: " + resp.error, true);
     return;
@@ -618,15 +635,19 @@ function buildAltaCard(a, inSearch) {
   card.className = "equip-card alta-pending-card";
   const lugar = a.nuevoLugar || "sin lugar";
   card.innerHTML = `
-    ${inSearch ? `<span class="alta-badge">📋 Hallazgo pendiente</span>` : ""}
-    <div class="equip-card-top">
-      <span class="equip-line1">${escapeHtml(a.inventario || "S/D")}${a.fechaDeteccion ? " · " + escapeHtml(a.fechaDeteccion) : ""}</span>
+    <div class="equip-thumb">${a.photosFolderId ? "" : "sin foto"}</div>
+    <div class="equip-card-text">
+      ${inSearch ? `<span class="alta-badge">📋 Hallazgo pendiente</span>` : ""}
+      <div class="equip-card-top">
+        <span class="equip-line1">${escapeHtml(a.inventario || "S/D")}${a.fechaDeteccion ? " · " + escapeHtml(a.fechaDeteccion) : ""}</span>
+      </div>
+      <div class="equip-desc">${escapeHtml(a.descripcion || "(sin descripción)")}</div>
+      <div class="equip-meta">${escapeHtml(a.modelo || "S/D")} · ${escapeHtml(a.serie || "S/D")}</div>
+      <div class="equip-meta">${escapeHtml(a.departamento || "sin depto.")} · ${escapeHtml(lugar)}</div>
     </div>
-    <div class="equip-desc">${escapeHtml(a.descripcion || "(sin descripción)")}</div>
-    <div class="equip-meta">${escapeHtml(a.modelo || "S/D")} · ${escapeHtml(a.serie || "S/D")}</div>
-    <div class="equip-meta">${escapeHtml(a.departamento || "sin depto.")} · ${escapeHtml(lugar)}</div>
   `;
   card.addEventListener("click", () => openAltaPanel(null, a.rowNumber));
+  attachCardPhotoLazyLoad(card.querySelector(".equip-thumb"), a.photosFolderId, a.fotoPortadaId);
   return card;
 }
 
@@ -731,13 +752,20 @@ async function loadAltaGallery(folderId) {
 function renderAltaGallery() {
   const gal = $("altaGallery");
   gal.innerHTML = "";
+  const a = altasPendientes.find((x) => x.rowNumber === currentAltaRow);
+  const portadaId = a ? a.fotoPortadaId : "";
   altaGalleryFiles.forEach((file) => {
     const item = document.createElement("div");
     item.className = "gallery-item";
-    item.innerHTML = `<img alt="${escapeHtml(file.name)}"><button class="gallery-del" title="Eliminar foto">✕</button>`;
+    const esPortada = file.id === portadaId;
+    item.innerHTML = `<img alt="${escapeHtml(file.name)}">
+      <button class="gallery-star ${esPortada ? "active" : ""}" title="Marcar como foto de portada">★</button>
+      <button class="gallery-del" title="Eliminar foto">✕</button>`;
     gal.appendChild(item);
     const img = item.querySelector("img");
+    const starBtn = item.querySelector(".gallery-star");
     const delBtn = item.querySelector(".gallery-del");
+    starBtn.addEventListener("click", (ev) => { ev.stopPropagation(); setAltaFotoPortada(file.id); });
     delBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       if (!confirm("¿Eliminar esta foto?")) return;
@@ -754,6 +782,20 @@ function renderAltaGallery() {
     img.addEventListener("click", () => openLightbox(img.src, file));
     fetchDriveImage(file.id).then((url) => { if (url) img.src = url; });
   });
+}
+
+async function setAltaFotoPortada(fileId) {
+  const a = altasPendientes.find((x) => x.rowNumber === currentAltaRow);
+  if (!a) return;
+  const nuevo = a.fotoPortadaId === fileId ? "" : fileId; // tocar la misma la desmarca
+  try {
+    await writeAltaFields(currentAltaRow, { fotoPortadaId: nuevo });
+    a.fotoPortadaId = nuevo;
+    renderAltaGallery();
+  } catch (err) {
+    console.error(err);
+    showToast("No se pudo marcar la foto de portada.", true);
+  }
 }
 
 async function handleAltaPhotoUpload(fileList) {
@@ -811,19 +853,8 @@ async function generatePdfReportAltas() {
   const items = await mapWithConcurrency(altasPendientes, 6, async (a) => {
     let photoUrl = null;
     try {
-      if (a.photosFolderId) {
-        const res = await gapi.client.drive.files.list({
-          q: `'${a.photosFolderId}' in parents and mimeType contains 'image/' and trashed = false`,
-          fields: "files(id)",
-          orderBy: "createdTime",
-          pageSize: 1,
-          supportsAllDrives: true,
-          includeItemsFromAllDrives: true,
-          corpora: "allDrives",
-        });
-        const files = res.result.files || [];
-        if (files.length) photoUrl = await fetchDriveImageCached(files[0].id);
-      }
+      const fileId = await resolveCoverFileId(a.photosFolderId, a.fotoPortadaId);
+      if (fileId) photoUrl = await fetchDriveImageCached(fileId);
     } catch (err) {
       console.error(err);
     }
@@ -1094,19 +1125,20 @@ function buildCard(e) {
   const lugar = e.nuevoLugar || e.ubicacion || "sin lugar";
   const linea1 = [displayCode(e), e.anio, e.estadoEquipo].filter(Boolean).map(escapeHtml).join(" · ");
   card.innerHTML = `
-    <div class="equip-card-top">
-      <span class="equip-line1">${linea1}</span>
-      <span class="equip-status ${statusClass(e.estado)}" title="${escapeHtml(e.estado)}"></span>
+    <div class="equip-thumb">${e.photosFolderId ? "" : "sin foto"}</div>
+    <div class="equip-card-text">
+      <div class="equip-card-top">
+        <span class="equip-line1">${linea1}</span>
+        <span class="equip-status ${statusClass(e.estado)}" title="${escapeHtml(e.estado)}"></span>
+      </div>
+      <div class="equip-desc">${escapeHtml(e.descripcion || "(sin descripción)")}</div>
+      <div class="equip-meta">${escapeHtml(e.categoria || "sin categoría")} · ${escapeHtml(e.modelo || "S/D")} · ${escapeHtml(e.serie || "S/D")}</div>
+      <div class="equip-meta">${escapeHtml(e.departamento || "sin depto.")} · ${escapeHtml(lugar)}</div>
+      ${v ? `<span class="verif-tag">${v === "Encontrado" ? "✓ Encontrado" : "✕ No encontrado"}</span>` : ""}
     </div>
-    <div class="equip-desc">${escapeHtml(e.descripcion || "(sin descripción)")}</div>
-    <div class="equip-meta">${escapeHtml(e.categoria || "sin categoría")} · ${escapeHtml(e.modelo || "S/D")} · ${escapeHtml(e.serie || "S/D")}</div>
-    <div class="equip-meta equip-row4">
-      <span>${escapeHtml(e.departamento || "sin depto.")} · ${escapeHtml(lugar)}</span>
-      ${e.photosFolderId ? `<span class="equip-cam">📷</span>` : ""}
-    </div>
-    ${v ? `<span class="verif-tag">${v === "Encontrado" ? "✓ Encontrado" : "✕ No encontrado"}</span>` : ""}
   `;
   card.addEventListener("click", () => openDetail(e.rowNumber));
+  attachCardPhotoLazyLoad(card.querySelector(".equip-thumb"), e.photosFolderId, e.fotoPortadaId);
   return card;
 }
 
@@ -1273,6 +1305,11 @@ window.addEventListener("popstate", () => {
     return;
   }
   if (detailOpen) {
+    const eActual = equipos.find((x) => x.rowNumber === currentRow);
+    if (eActual && !eActual.estadoVerificacion && !confirm("Todavía no marcaste si este equipo está Encontrado o No encontrado. ¿Salir igual?")) {
+      pushHistoryLayer();
+      return;
+    }
     if (equipoFormDirty && !confirm("Tenés cambios sin guardar. ¿Salir igual?")) {
       pushHistoryLayer();
       return;
@@ -1699,15 +1736,19 @@ async function deletePhoto(fileId, itemEl) {
 // ---------- Informe PDF ----------
 
 const firstPhotoIdCache = new Map(); // photosFolderId -> fileId (o null)
-const photoUrlCache = new Map(); // fileId -> object URL
+const photoUrlCache = new Map(); // fileId -> object URL (foto completa)
+const thumbUrlCache = new Map(); // fileId -> object URL (miniatura chica)
 
-async function getCoverPhotoFileId(e) {
-  if (!e.photosFolderId) return null;
-  if (e.fotoPortadaId) return e.fotoPortadaId;
-  if (firstPhotoIdCache.has(e.photosFolderId)) return firstPhotoIdCache.get(e.photosFolderId);
+// Genérico: da el ID de la foto "de portada" de cualquier carpeta (equipo o
+// alta pendiente) — la marcada con la estrellita si existe, si no la
+// primera subida. Cachea por carpeta para no repetir la búsqueda.
+async function resolveCoverFileId(photosFolderId, fotoPortadaId) {
+  if (fotoPortadaId) return fotoPortadaId;
+  if (!photosFolderId) return null;
+  if (firstPhotoIdCache.has(photosFolderId)) return firstPhotoIdCache.get(photosFolderId);
   try {
     const res = await gapi.client.drive.files.list({
-      q: `'${e.photosFolderId}' in parents and mimeType contains 'image/' and trashed = false`,
+      q: `'${photosFolderId}' in parents and mimeType contains 'image/' and trashed = false`,
       fields: "files(id)",
       orderBy: "createdTime",
       pageSize: 1,
@@ -1717,12 +1758,74 @@ async function getCoverPhotoFileId(e) {
     });
     const files = res.result.files || [];
     const id = files.length ? files[0].id : null;
-    firstPhotoIdCache.set(e.photosFolderId, id);
+    firstPhotoIdCache.set(photosFolderId, id);
     return id;
   } catch (err) {
     console.error(err);
     return null;
   }
+}
+
+// Miniatura chica (no la foto completa) para las tarjetas de la lista —
+// pesa apenas unos KB en vez de los ~350KB de la foto entera.
+async function fetchDriveThumbCached(fileId) {
+  if (thumbUrlCache.has(fileId)) return thumbUrlCache.get(fileId);
+  try {
+    const meta = await gapi.client.drive.files.get({
+      fileId,
+      fields: "thumbnailLink",
+      supportsAllDrives: true,
+    });
+    const link = meta.result.thumbnailLink;
+    if (!link) { thumbUrlCache.set(fileId, null); return null; }
+    const res = await fetch(link, { headers: { Authorization: "Bearer " + accessToken } });
+    if (!res.ok) { thumbUrlCache.set(fileId, null); return null; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    thumbUrlCache.set(fileId, url);
+    return url;
+  } catch (err) {
+    console.error(err);
+    thumbUrlCache.set(fileId, null);
+    return null;
+  }
+}
+
+// Carga las miniaturas solo de las tarjetas que entran en pantalla (o
+// están por entrar), no las 700 de una — así no se descarga de más.
+let cardPhotoObserver = null;
+function getCardPhotoObserver() {
+  if (cardPhotoObserver) return cardPhotoObserver;
+  cardPhotoObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      const el = entry.target;
+      cardPhotoObserver.unobserve(el);
+      const folderId = el.dataset.folderId;
+      const portadaId = el.dataset.portadaId || "";
+      resolveCoverFileId(folderId, portadaId)
+        .then((fileId) => (fileId ? fetchDriveThumbCached(fileId) : null))
+        .then((url) => {
+          if (url) {
+            el.style.backgroundImage = `url("${url}")`;
+            el.textContent = "";
+            el.classList.add("has-photo");
+          }
+        });
+    });
+  }, { rootMargin: "400px 0px" });
+  return cardPhotoObserver;
+}
+
+function attachCardPhotoLazyLoad(el, folderId, portadaId) {
+  if (!folderId) return; // sin fotos: queda el círculo "sin foto" estático
+  el.dataset.folderId = folderId;
+  el.dataset.portadaId = portadaId || "";
+  getCardPhotoObserver().observe(el);
+}
+
+async function getCoverPhotoFileId(e) {
+  return resolveCoverFileId(e.photosFolderId, e.fotoPortadaId);
 }
 
 async function fetchDriveImageCached(fileId) {
