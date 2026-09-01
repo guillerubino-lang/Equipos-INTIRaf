@@ -1737,7 +1737,7 @@ async function deletePhoto(fileId, itemEl) {
 
 const firstPhotoIdCache = new Map(); // photosFolderId -> fileId (o null)
 const photoUrlCache = new Map(); // fileId -> object URL (foto completa)
-const thumbUrlCache = new Map(); // fileId -> object URL (miniatura chica)
+const coverFileMetaCache = new Map(); // fileId -> { thumbnailLink, webViewLink }
 
 // Genérico: da el ID de la foto "de portada" de cualquier carpeta (equipo o
 // alta pendiente) — la marcada con la estrellita si existe, si no la
@@ -1767,13 +1767,14 @@ async function resolveCoverFileId(photosFolderId, fotoPortadaId) {
 }
 
 // Miniatura chica (no la foto completa) para las tarjetas de la lista —
-// pesa apenas unos KB en vez de los ~350KB de la foto entera.
+// pesa apenas unos KB en vez de los ~350KB de la foto entera. De paso
+// guarda el link de Drive, para reusarlo si después se abre el visor.
 async function fetchDriveThumbCached(fileId) {
-  if (thumbUrlCache.has(fileId)) return thumbUrlCache.get(fileId);
+  if (coverFileMetaCache.has(fileId)) return coverFileMetaCache.get(fileId).thumbnailLink;
   try {
     const meta = await gapi.client.drive.files.get({
       fileId,
-      fields: "thumbnailLink",
+      fields: "thumbnailLink, webViewLink",
       supportsAllDrives: true,
     });
     // A diferencia de la foto completa (que sí se pide con fetch() + token),
@@ -1781,14 +1782,25 @@ async function fetchDriveThumbCached(fileId) {
     // acceso — se usa directo como imagen, sin fetch. Pedirla con fetch()
     // choca contra el CORS de ese dominio (googleusercontent.com no está
     // preparado para pedidos con cabecera de autorización).
-    const link = meta.result.thumbnailLink || null;
-    thumbUrlCache.set(fileId, link);
-    return link;
+    const info = { thumbnailLink: meta.result.thumbnailLink || null, webViewLink: meta.result.webViewLink || null };
+    coverFileMetaCache.set(fileId, info);
+    return info.thumbnailLink;
   } catch (err) {
     console.error(err);
-    thumbUrlCache.set(fileId, null);
+    coverFileMetaCache.set(fileId, { thumbnailLink: null, webViewLink: null });
     return null;
   }
+}
+
+// Abre el visor con la foto de portada de una tarjeta (equipo o alta
+// pendiente), al tocar la miniatura circular en vez del resto de la ficha.
+async function openCardCoverPhoto(folderId, portadaId) {
+  const fileId = await resolveCoverFileId(folderId, portadaId);
+  if (!fileId) return;
+  const imgUrl = await fetchDriveImageCached(fileId);
+  if (!coverFileMetaCache.has(fileId)) await fetchDriveThumbCached(fileId); // completa el webViewLink en caché
+  const meta = coverFileMetaCache.get(fileId) || {};
+  if (imgUrl) openLightbox(imgUrl, { webViewLink: meta.webViewLink });
 }
 
 // Carga las miniaturas solo de las tarjetas que entran en pantalla (o
@@ -1818,9 +1830,14 @@ function getCardPhotoObserver() {
 }
 
 function attachCardPhotoLazyLoad(el, folderId, portadaId) {
-  if (!folderId) return; // sin fotos: queda el círculo "sin foto" estático
+  if (!folderId) return; // sin fotos: queda el círculo "sin foto" estático, el click abre la ficha normal
   el.dataset.folderId = folderId;
   el.dataset.portadaId = portadaId || "";
+  el.classList.add("equip-thumb-clickable");
+  el.addEventListener("click", (ev) => {
+    ev.stopPropagation(); // no abrir también la ficha al tocar la foto
+    openCardCoverPhoto(folderId, portadaId);
+  });
   getCardPhotoObserver().observe(el);
 }
 

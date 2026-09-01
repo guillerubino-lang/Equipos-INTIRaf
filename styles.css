@@ -284,6 +284,14 @@ input, select, textarea { font-family: inherit; }
   border: 1px solid var(--line-strong);
   overflow: hidden;
 }
+.equip-thumb-clickable {
+  cursor: zoom-in;
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+.equip-thumb-clickable:hover {
+  box-shadow: 0 0 0 3px var(--amber-bg);
+}
+.equip-thumb-clickable:active { transform: scale(0.93); }
 
 .equip-card-text { min-width: 0; flex: 1; }
 
