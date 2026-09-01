@@ -1,6 +1,6 @@
 // Service worker mínimo: solo habilita "Agregar a pantalla de inicio".
 // No cachea datos (los equipos siempre se leen en vivo desde Sheets/Drive).
-const CACHE_NAME = "equipos-shell-v35";
+const CACHE_NAME = "equipos-shell-v37";
 const SHELL = ["./index.html", "./styles.css", "./app.js", "./manifest.json"];
 
 self.addEventListener("install", (event) => {

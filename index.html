@@ -39,6 +39,11 @@
       <button type="button" id="btnScan" class="btn-scan" title="Escanear código de barras">📷</button>
     </div>
     <div class="filters" id="filtersRow">
+      <select id="filterTipoRegistro">
+        <option value="">Todo (inventario + altas)</option>
+        <option value="equipo">Solo inventario</option>
+        <option value="alta">Solo altas pendientes</option>
+      </select>
       <select id="filterUbicacion"><option value="">Todas las ubicaciones</option></select>
       <select id="filterCategoria"><option value="">Todas las categorías</option></select>
       <select id="filterEstado">
@@ -59,6 +64,7 @@
     </div>
     <div class="count-row">
       <span id="resultCount"></span> <span id="progressCounter" class="progress-counter hidden"></span>
+      <button type="button" id="btnDashboard" class="btn-report">📊 Tablero</button>
       <button type="button" id="btnAltas" class="btn-report">📋 Altas pendientes (0)</button>
       <button type="button" id="btnReport" class="btn-report">📄 Generar informe PDF</button>
     </div>
@@ -67,7 +73,7 @@
   <section id="listWrap" class="list-wrap">
     <div id="loadingMsg" class="empty-state">Cargando equipos…</div>
     <div id="cardsGrid" class="cards-grid"></div>
-    <div id="emptyState" class="empty-state hidden">No se encontraron equipos con ese filtro.</div>
+    <div id="emptyState" class="empty-state hidden">No se encontraron registros con ese filtro.</div>
   </section>
 
 </main>
@@ -230,23 +236,23 @@
   <iframe id="manualIframe" src="" title="Manual de usuario"></iframe>
 </div>
 
+<!-- Tablero de control: indicadores calculados al vuelo sobre los datos ya cargados -->
+<div id="dashboardOverlay" class="manual-overlay hidden">
+  <div class="manual-overlay-bar">
+    <span>📊 Tablero de control</span>
+    <div class="manual-overlay-actions">
+      <button id="btnCloseDashboard" class="btn-icon" aria-label="Cerrar">✕</button>
+    </div>
+  </div>
+  <div id="dashboardContent" class="dashboard-content"></div>
+</div>
+
 <!-- Escáner de código de barras -->
 <div id="scannerOverlay" class="scanner-overlay hidden">
   <video id="scannerVideo" autoplay playsinline muted></video>
   <div class="scanner-frame"></div>
   <p class="scanner-hint">Apuntá al código de barras de la etiqueta</p>
   <button id="btnCloseScanner" class="lightbox-close" aria-label="Cerrar">✕</button>
-</div>
-
-<!-- Vista de Altas pendientes -->
-<div id="altasListView" class="altas-list-view hidden">
-  <div class="altas-list-header">
-    <button id="btnCloseAltasList" class="btn-icon" aria-label="Volver">← Volver</button>
-    <h2>Altas pendientes</h2>
-    <button id="btnReportAltas" class="btn btn-secondary">📄 Informe</button>
-  </div>
-  <div id="altasCardsGrid" class="cards-grid"></div>
-  <div id="altasEmptyState" class="empty-state hidden">No hay altas pendientes todavía.</div>
 </div>
 
 <!-- Formulario de alta pendiente (hallazgo nuevo) -->

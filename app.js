@@ -608,26 +608,13 @@ async function ensureAltaPhotosFolder(alta) {
 
 // ---------- UI de Altas pendientes ----------
 
-function openAltasListView() {
-  renderAltasGrid();
-  $("altasListView").classList.remove("hidden");
-  pushHistoryLayer();
-}
-
-function hideAltasListUI() {
-  $("altasListView").classList.add("hidden");
-}
-
-function closeAltasListView() {
-  if (!$("altasListView").classList.contains("hidden")) history.back();
-  else hideAltasListUI();
-}
-
-function renderAltasGrid() {
-  const grid = $("altasCardsGrid");
-  grid.innerHTML = "";
-  $("altasEmptyState").classList.toggle("hidden", altasPendientes.length > 0);
-  altasPendientes.forEach((a) => grid.appendChild(buildAltaCard(a)));
+// El botón "Altas pendientes" ahora es un atajo: pone el filtro de tipo en
+// "solo altas" y llama a renderList() — ya no abre una vista aparte, todo
+// pasa por la lista principal con el filtro general.
+function jumpToAltasFilter() {
+  $("filterTipoRegistro").value = "alta";
+  renderList();
+  $("cardsGrid").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function buildAltaCard(a, inSearch) {
@@ -841,16 +828,17 @@ async function handleAltaPhotoUpload(fileList) {
 // ---------- Informe PDF de Altas pendientes ----------
 
 async function generatePdfReportAltas() {
-  if (altasPendientes.length === 0) {
-    showToast("No hay altas pendientes para incluir en el informe.", true);
+  const seleccion = currentFilteredAltas;
+  if (seleccion.length === 0) {
+    showToast("No hay altas pendientes para incluir en el informe con este filtro.", true);
     return;
   }
-  const btn = $("btnReportAltas");
+  const btn = $("btnReport");
   btn.disabled = true;
   let completed = 0;
-  btn.textContent = `📄 Cargando fotos 0/${altasPendientes.length}…`;
+  btn.textContent = `📄 Cargando fotos 0/${seleccion.length}…`;
 
-  const items = await mapWithConcurrency(altasPendientes, 6, async (a) => {
+  const items = await mapWithConcurrency(seleccion, 6, async (a) => {
     let photoUrl = null;
     try {
       const fileId = await resolveCoverFileId(a.photosFolderId, a.fotoPortadaId);
@@ -859,11 +847,11 @@ async function generatePdfReportAltas() {
       console.error(err);
     }
     completed++;
-    btn.textContent = `📄 Cargando fotos ${completed}/${altasPendientes.length}…`;
+    btn.textContent = `📄 Cargando fotos ${completed}/${seleccion.length}…`;
     return { a, photoUrl };
   });
 
-  btn.textContent = "📄 Informe";
+  btn.textContent = "📄 Generar informe PDF (altas)";
   btn.disabled = false;
 
   renderPrintReportAltas(items);
@@ -1027,6 +1015,7 @@ let currentFilteredEquipos = []; // último resultado de renderList(), reusado p
 
 function getActiveFilters() {
   return {
+    tipo: $("filterTipoRegistro").value, // "" = todos, "equipo", "alta"
     ubic: $("filterUbicacion").value,
     cat: $("filterCategoria").value,
     estado: $("filterEstado").value,
@@ -1039,6 +1028,7 @@ function getActiveFilters() {
 }
 
 function filterEquipos(f) {
+  if (f.tipo === "alta") return []; // filtrado a "solo altas": no mostrar equipos
   return equipos.filter((e) => {
     if (f.ubic && e.ubicacion !== f.ubic) return false;
     if (f.cat && e.categoria !== f.cat) return false;
@@ -1058,30 +1048,45 @@ function filterEquipos(f) {
   });
 }
 
-function renderList() {
-  const filtered = filterEquipos(getActiveFilters());
-  currentFilteredEquipos = filtered;
+// Altas pendientes no tienen Categoría, Estado oblea, ni Verificación — si
+// alguno de esos filtros está activo, quedan afuera (no pueden cumplirlo).
+function filterAltas(f) {
+  if (f.tipo === "equipo") return []; // filtrado a "solo inventario": no mostrar altas
+  if (f.ubic || f.cat || f.estado || f.verif) return [];
+  return altasPendientes.filter((a) => {
+    if (f.depto && a.departamento !== f.depto) return false;
+    if (f.lugar && a.nuevoLugar !== f.lugar) return false;
+    if (f.estadoEquipo && a.estadoEquipo !== f.estadoEquipo) return false;
+    if (f.q) {
+      const hay = `${a.inventario} ${a.descripcion} ${a.modelo} ${a.serie}`.toLowerCase();
+      if (!hay.includes(f.q)) return false;
+    }
+    return true;
+  });
+}
 
-  $("resultCount").textContent = `${filtered.length} equipo${filtered.length === 1 ? "" : "s"}`;
+let currentFilteredAltas = [];
+
+function renderList() {
+  const f = getActiveFilters();
+  const filtered = filterEquipos(f);
+  const altaMatches = filterAltas(f);
+  currentFilteredEquipos = filtered;
+  currentFilteredAltas = altaMatches;
+
+  $("resultCount").textContent = `${filtered.length} equipo${filtered.length === 1 ? "" : "s"}` +
+    (altaMatches.length ? ` · ${altaMatches.length} alta${altaMatches.length === 1 ? "" : "s"} pendiente${altaMatches.length === 1 ? "" : "s"}` : "");
   updateProgressCounter();
+
   const grid = $("cardsGrid");
   grid.innerHTML = "";
   filtered.forEach((e) => grid.appendChild(buildCard(e)));
-
-  // Si hay texto de búsqueda, sumamos también coincidencias de Altas
-  // pendientes al final — con otro color, para no confundirlas con
-  // equipos ya registrados.
-  const q = $("searchInput").value.trim().toLowerCase();
-  let altaMatches = [];
-  if (q) {
-    altaMatches = altasPendientes.filter((a) => {
-      const hay = `${a.inventario} ${a.descripcion} ${a.modelo} ${a.serie}`.toLowerCase();
-      return hay.includes(q);
-    });
-    altaMatches.forEach((a) => grid.appendChild(buildAltaCard(a, true)));
-  }
+  altaMatches.forEach((a) => grid.appendChild(buildAltaCard(a, true)));
 
   $("emptyState").classList.toggle("hidden", filtered.length > 0 || altaMatches.length > 0);
+
+  // El botón de informe se adapta a qué se está mirando.
+  $("btnReport").textContent = f.tipo === "alta" ? "📄 Generar informe PDF (altas)" : "📄 Generar informe PDF";
 }
 
 function updateProgressCounter() {
@@ -1270,14 +1275,18 @@ function hideLightboxUI() {
 
 window.addEventListener("popstate", () => {
   const manualOpen = !$("manualOverlay").classList.contains("hidden");
+  const dashboardOpen = !$("dashboardOverlay").classList.contains("hidden");
   const scannerOpen = !$("scannerOverlay").classList.contains("hidden");
   const lightboxOpen = !$("lightbox").classList.contains("hidden");
   const detailOpen = !$("detailPanel").classList.contains("hidden");
   const altaOpen = $("altaPanel") && !$("altaPanel").classList.contains("hidden");
-  const altasListOpen = $("altasListView") && !$("altasListView").classList.contains("hidden");
 
   if (manualOpen) {
     hideManualUI();
+    return;
+  }
+  if (dashboardOpen) {
+    hideDashboardUI();
     return;
   }
   if (scannerOpen) {
@@ -1315,10 +1324,6 @@ window.addEventListener("popstate", () => {
       return;
     }
     hideDetailPanelUI();
-    return;
-  }
-  if (altasListOpen) {
-    hideAltasListUI();
     return;
   }
   // No había nada abierto: el usuario está tratando de salir de la app.
@@ -2039,6 +2044,138 @@ function closeManual() {
   else hideManualUI();
 }
 
+// ---------- Tablero de control ----------
+
+function openDashboard() {
+  renderDashboard();
+  $("dashboardOverlay").classList.remove("hidden");
+  pushHistoryLayer();
+}
+
+function hideDashboardUI() {
+  $("dashboardOverlay").classList.add("hidden");
+}
+
+function closeDashboard() {
+  if (!$("dashboardOverlay").classList.contains("hidden")) history.back();
+  else hideDashboardUI();
+}
+
+function parseFormattedTimestamp(s) {
+  if (!s) return null;
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const [, dd, mm, yyyy, hh, min] = m;
+  return new Date(+yyyy, +mm - 1, +dd, +hh, +min).getTime();
+}
+
+function computeDashboardData() {
+  const total = equipos.length;
+  const encontrados = equipos.filter((e) => e.estadoVerificacion === "Encontrado").length;
+  const noEncontrados = equipos.filter((e) => e.estadoVerificacion === "No encontrado").length;
+  const pendientes = total - encontrados - noEncontrados;
+
+  const porDepto = {}; // nombre (o "" = sin asignar) -> { total, enc, no, pen }
+  equipos.forEach((e) => {
+    const key = (e.departamento || "").trim();
+    if (!porDepto[key]) porDepto[key] = { total: 0, enc: 0, no: 0, pen: 0 };
+    const d = porDepto[key];
+    d.total++;
+    if (e.estadoVerificacion === "Encontrado") d.enc++;
+    else if (e.estadoVerificacion === "No encontrado") d.no++;
+    else d.pen++;
+  });
+
+  const porEstadoEquipo = {};
+  equipos.forEach((e) => {
+    const key = (e.estadoEquipo || "").trim();
+    if (!key) return; // no mostramos chip para "sin definir", no es accionable
+    porEstadoEquipo[key] = (porEstadoEquipo[key] || 0) + 1;
+  });
+
+  const sinFoto = equipos.filter((e) => !e.photosFolderId).length;
+  const pctSinFoto = total ? Math.round((sinFoto / total) * 100) : 0;
+
+  const ahora = Date.now();
+  const altasViejas = altasPendientes.filter((a) => {
+    const t = parseFormattedTimestamp(a.fechaDeteccion);
+    return t && (ahora - t) > 30 * 24 * 60 * 60 * 1000;
+  }).length;
+
+  return { total, encontrados, noEncontrados, pendientes, porDepto, porEstadoEquipo, pctSinFoto, totalAltas: altasPendientes.length, altasViejas };
+}
+
+function applyFilterAndClose(filters) {
+  if (filters.verif !== undefined) $("filterVerificacion").value = filters.verif;
+  if (filters.depto !== undefined) $("filterDepartamento").value = filters.depto;
+  if (filters.estadoEquipo !== undefined) $("filterEstadoEquipo").value = filters.estadoEquipo;
+  if (filters.tipo !== undefined) $("filterTipoRegistro").value = filters.tipo;
+  renderList();
+  closeDashboard();
+}
+
+function renderDashboard() {
+  const d = computeDashboardData();
+  const el = $("dashboardContent");
+
+  const deptEntries = Object.entries(d.porDepto).sort((a, b) => b[1].total - a[1].total);
+  let deptRows = "";
+  deptEntries.forEach(([key, v]) => {
+    const sinAsignar = key === "";
+    const nombre = sinAsignar ? "⚠ Sin departamento" : key;
+    const pctEnc = v.total ? (v.enc / v.total) * 100 : 0;
+    const pctNo = v.total ? (v.no / v.total) * 100 : 0;
+    const pctPen = 100 - pctEnc - pctNo;
+    deptRows += `
+      <div class="dash-dept-row ${sinAsignar ? "dash-dept-warn dash-row-static" : ""}" ${sinAsignar ? "" : `data-depto="${escapeHtml(key)}"`}>
+        <div class="dash-dept-top"><span>${escapeHtml(nombre)}</span><span class="dash-dept-total">${v.total} total</span></div>
+        <div class="dash-bar"><div class="dash-bar-enc" style="width:${pctEnc}%"></div><div class="dash-bar-no" style="width:${pctNo}%"></div><div class="dash-bar-pen" style="width:${pctPen}%"></div></div>
+        <div class="dash-dept-nums"><span class="dash-n-enc">✓ ${v.enc}</span><span class="dash-n-no">✕ ${v.no}</span><span class="dash-n-pen">○ ${v.pen}</span></div>
+      </div>`;
+  });
+
+  let estadoChips = "";
+  Object.entries(d.porEstadoEquipo).forEach(([key, count]) => {
+    estadoChips += `<span class="dash-chip" data-estado-equipo="${escapeHtml(key)}">${escapeHtml(key)}: ${count}</span>`;
+  });
+
+  el.innerHTML = `
+    <div class="dash-section-label">Relevamiento general</div>
+    <div class="dash-stats-row">
+      <div class="dash-stat dash-stat-ok" data-verif="Encontrado"><div class="dash-stat-n">${d.encontrados}</div><div class="dash-stat-l">Encontrados</div></div>
+      <div class="dash-stat dash-stat-bad" data-verif="No encontrado"><div class="dash-stat-n">${d.noEncontrados}</div><div class="dash-stat-l">No encontrados</div></div>
+      <div class="dash-stat dash-stat-neutral" data-verif="Pendiente"><div class="dash-stat-n">${d.pendientes}</div><div class="dash-stat-l">Pendientes</div></div>
+    </div>
+
+    <div class="dash-section-label">Por departamento</div>
+    <div class="dash-card">${deptRows || `<p style="padding:14px 0;font-size:12px;color:var(--steel);">Sin datos todavía.</p>`}</div>
+
+    <div class="dash-section-label">Estado general del patrimonio</div>
+    <div class="dash-chips">
+      ${estadoChips}
+      <span class="dash-chip dash-chip-amber dash-chip-static">Sin foto: ${d.pctSinFoto}%</span>
+    </div>
+
+    <div class="dash-section-label dash-section-label-violet">Altas pendientes</div>
+    <div class="dash-alta-card" data-tipo="alta">
+      <span>${d.totalAltas} hallazgo${d.totalAltas === 1 ? "" : "s"} sin formalizar</span>
+      ${d.altasViejas ? `<span class="dash-alta-badge">${d.altasViejas} hace +30 días</span>` : ""}
+    </div>
+  `;
+
+  el.querySelectorAll(".dash-stat").forEach((elm) => {
+    elm.addEventListener("click", () => applyFilterAndClose({ verif: elm.dataset.verif, tipo: "equipo" }));
+  });
+  el.querySelectorAll(".dash-dept-row[data-depto]").forEach((elm) => {
+    elm.addEventListener("click", () => applyFilterAndClose({ depto: elm.dataset.depto, tipo: "" }));
+  });
+  el.querySelectorAll("[data-estado-equipo]").forEach((elm) => {
+    elm.addEventListener("click", () => applyFilterAndClose({ estadoEquipo: elm.dataset.estadoEquipo, tipo: "equipo" }));
+  });
+  const altaCard = el.querySelector("[data-tipo='alta']");
+  if (altaCard) altaCard.addEventListener("click", () => applyFilterAndClose({ tipo: "alta" }));
+}
+
 function scanLoop() {
   if (!scannerActive) return;
   const video = $("scannerVideo");
@@ -2116,15 +2253,19 @@ $("filterDepartamento").addEventListener("change", renderList);
 $("filterNuevoLugar").addEventListener("change", renderList);
 $("filterEstadoEquipo").addEventListener("change", renderList);
 $("filterVerificacion").addEventListener("change", renderList);
-$("btnReport").addEventListener("click", generatePdfReport);
+$("filterTipoRegistro").addEventListener("change", renderList);
+$("btnReport").addEventListener("click", () => {
+  if ($("filterTipoRegistro").value === "alta") generatePdfReportAltas();
+  else generatePdfReport();
+});
 $("btnScan").addEventListener("click", openScanner);
 $("btnCloseScanner").addEventListener("click", closeScanner);
 $("btnManual").addEventListener("click", openManual);
 $("btnCloseManual").addEventListener("click", closeManual);
+$("btnDashboard").addEventListener("click", openDashboard);
+$("btnCloseDashboard").addEventListener("click", closeDashboard);
 
-$("btnAltas").addEventListener("click", openAltasListView);
-$("btnCloseAltasList").addEventListener("click", closeAltasListView);
-$("btnReportAltas").addEventListener("click", generatePdfReportAltas);
+$("btnAltas").addEventListener("click", jumpToAltasFilter);
 $("btnCloseAlta").addEventListener("click", closeAltaPanel);
 $("btnCancelAlta").addEventListener("click", closeAltaPanel);
 $("overlayAlta").addEventListener("click", closeAltaPanel);

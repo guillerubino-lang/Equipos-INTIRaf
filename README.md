@@ -209,8 +209,17 @@ Si escaneás un código y no aparece ningún resultado, la app pregunta si quer�
 - **Evita duplicados** → si escaneás un código que ya tiene un hallazgo cargado, la app abre esa misma ficha en vez de crear una nueva.
 - **La primera foto crea el registro sola** → no hace falta tocar "Guardar" antes de poder sacar una foto — con lo que ya hayas tipeado hasta ese momento (aunque sea solo el código), la app guarda el hallazgo apenas subís la primera imagen.
 - **Descartar un hallazgo a medio cargar** → si sacaste una foto pero cancelás sin llegar a guardar el resto de los datos, la app te pregunta si querés eliminar ese registro (la foto va a la papelera de Drive, recuperable ahí por un tiempo) o dejarlo así para completarlo después. A diferencia de los equipos de la hoja principal, en Altas pendientes sí existe esta opción de borrado — son registros preliminares, no patrimonio oficial.
-- Se ve en una vista aparte, accesible con el botón **"📋 Altas pendientes"** (con contador) arriba de la lista, y también aparece mezclado en los resultados del buscador principal (con borde violeta) cuando coincide con lo que buscás.
-- Tiene su propio botón de **informe PDF**, con los campos que sí tienen estos registros.
+- **Se mezclan con la lista principal**, siempre — no hay una vista aparte. Se distinguen con **borde violeta** y la etiqueta "📋 Hallazgo pendiente". El filtro **"Tipo de registro"** (arriba, junto a los demás filtros) permite ver Todo / Solo inventario / Solo altas pendientes. El botón "📋 Altas pendientes (N)" es un atajo que pone ese filtro en "Solo altas pendientes" directamente.
+- El botón **"📄 Generar informe PDF"** se adapta solo: si el filtro de tipo está en "Solo altas pendientes", genera el informe de altas (con los campos que sí tienen esos registros); si no, genera el de inventario — en los dos casos respeta el resto de los filtros aplicados (Departamento, Lugar, etc.).
+
+## Tablero de control
+Botón **"📊 Tablero"** arriba de la lista — abre una pantalla con indicadores calculados al instante sobre los datos ya cargados (sin pedidos extra a Google, es todo en memoria):
+- **Relevamiento general**: Encontrados / No encontrados / Pendientes.
+- **Por departamento**: total, y desglose de encontrados/no encontrados/pendientes por cada uno, con una barra de tres colores. Incluye el total de equipos sin departamento asignado (informativo, no filtrable todavía).
+- **Estado general del patrimonio**: cantidad por Estado de equipo o bien, y % de equipos sin ninguna foto cargada (informativo).
+- **Altas pendientes**: total, y cuántas llevan más de 30 días sin que se les asigne el alta oficial.
+
+**Casi todos los números son tocables** — tocar "Encontrados", un departamento, un estado de equipo, o el resumen de Altas pendientes te lleva directo a la lista principal con ese filtro ya aplicado. Las dos excepciones son "Sin departamento" y "Sin foto", que hoy son solo informativos (no hay un filtro para esos dos casos en la lista principal todavía).
 
 ## Manual de usuario
 Hay un manual para el equipo de trabajo en `manual.html`. Se puede acceder de dos formas:
