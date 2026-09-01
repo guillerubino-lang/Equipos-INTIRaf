@@ -1776,14 +1776,14 @@ async function fetchDriveThumbCached(fileId) {
       fields: "thumbnailLink",
       supportsAllDrives: true,
     });
-    const link = meta.result.thumbnailLink;
-    if (!link) { thumbUrlCache.set(fileId, null); return null; }
-    const res = await fetch(link, { headers: { Authorization: "Bearer " + accessToken } });
-    if (!res.ok) { thumbUrlCache.set(fileId, null); return null; }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    thumbUrlCache.set(fileId, url);
-    return url;
+    // A diferencia de la foto completa (que sí se pide con fetch() + token),
+    // la miniatura de Drive viene en una URL que ya incluye el permiso de
+    // acceso — se usa directo como imagen, sin fetch. Pedirla con fetch()
+    // choca contra el CORS de ese dominio (googleusercontent.com no está
+    // preparado para pedidos con cabecera de autorización).
+    const link = meta.result.thumbnailLink || null;
+    thumbUrlCache.set(fileId, link);
+    return link;
   } catch (err) {
     console.error(err);
     thumbUrlCache.set(fileId, null);
