@@ -1052,7 +1052,10 @@ function filterEquipos(f) {
 // alguno de esos filtros está activo, quedan afuera (no pueden cumplirlo).
 function filterAltas(f) {
   if (f.tipo === "equipo") return []; // filtrado a "solo inventario": no mostrar altas
-  if (f.ubic || f.cat || f.estado || f.verif) return [];
+  // "No encontrado" y "Pendiente" no le aplican a una alta pendiente — por
+  // definición, si existe como alta es porque ya se encontró físicamente.
+  if (f.verif && f.verif !== "Encontrado") return [];
+  if (f.ubic || f.cat || f.estado) return []; // campos que las altas no tienen
   return altasPendientes.filter((a) => {
     if (f.depto && a.departamento !== f.depto) return false;
     if (f.lugar && a.nuevoLugar !== f.lugar) return false;
@@ -2071,9 +2074,12 @@ function parseFormattedTimestamp(s) {
 
 function computeDashboardData() {
   const total = equipos.length;
-  const encontrados = equipos.filter((e) => e.estadoVerificacion === "Encontrado").length;
+  const encontradosEquipos = equipos.filter((e) => e.estadoVerificacion === "Encontrado").length;
   const noEncontrados = equipos.filter((e) => e.estadoVerificacion === "No encontrado").length;
-  const pendientes = total - encontrados - noEncontrados;
+  const pendientes = total - encontradosEquipos - noEncontrados;
+  // "Encontrados" suma las altas pendientes — están confirmadas físicamente
+  // por definición (si existen como alta es porque ya se encontraron).
+  const encontrados = encontradosEquipos + altasPendientes.length;
 
   const porDepto = {}; // nombre (o "" = sin asignar) -> { total, enc, no, pen }
   equipos.forEach((e) => {
@@ -2085,11 +2091,23 @@ function computeDashboardData() {
     else if (e.estadoVerificacion === "No encontrado") d.no++;
     else d.pen++;
   });
+  altasPendientes.forEach((a) => {
+    const key = (a.departamento || "").trim();
+    if (!porDepto[key]) porDepto[key] = { total: 0, enc: 0, no: 0, pen: 0 };
+    const d = porDepto[key];
+    d.total++;
+    d.enc++; // las altas siempre cuentan como encontradas
+  });
 
   const porEstadoEquipo = {};
   equipos.forEach((e) => {
     const key = (e.estadoEquipo || "").trim();
     if (!key) return; // no mostramos chip para "sin definir", no es accionable
+    porEstadoEquipo[key] = (porEstadoEquipo[key] || 0) + 1;
+  });
+  altasPendientes.forEach((a) => {
+    const key = (a.estadoEquipo || "").trim();
+    if (!key) return;
     porEstadoEquipo[key] = (porEstadoEquipo[key] || 0) + 1;
   });
 
@@ -2172,7 +2190,7 @@ function renderDashboard() {
   `;
 
   el.querySelectorAll(".dash-stat").forEach((elm) => {
-    elm.addEventListener("click", () => applyFilterAndClose({ verif: elm.dataset.verif, tipo: "equipo" }));
+    elm.addEventListener("click", () => applyFilterAndClose({ verif: elm.dataset.verif, tipo: "" }));
   });
   el.querySelectorAll(".dash-dept-row[data-depto]").forEach((elm) => {
     elm.addEventListener("click", () => applyFilterAndClose({ depto: elm.dataset.depto, tipo: "" }));
