@@ -2106,10 +2106,18 @@ function computeDashboardData() {
 }
 
 function applyFilterAndClose(filters) {
-  if (filters.verif !== undefined) $("filterVerificacion").value = filters.verif;
-  if (filters.depto !== undefined) $("filterDepartamento").value = filters.depto;
-  if (filters.estadoEquipo !== undefined) $("filterEstadoEquipo").value = filters.estadoEquipo;
-  if (filters.tipo !== undefined) $("filterTipoRegistro").value = filters.tipo;
+  // Cada indicador del tablero deja un filtro limpio y predecible — sin
+  // arrastrar filtros viejos (ej. Ubicación o Estado oblea, que las altas
+  // pendientes no tienen y las taparían por completo).
+  $("filterVerificacion").value = filters.verif || "";
+  $("filterDepartamento").value = filters.depto || "";
+  $("filterEstadoEquipo").value = filters.estadoEquipo || "";
+  $("filterTipoRegistro").value = filters.tipo || "";
+  $("filterUbicacion").value = "";
+  $("filterCategoria").value = "";
+  $("filterEstado").value = "";
+  $("filterNuevoLugar").value = "";
+  $("searchInput").value = "";
   renderList();
   closeDashboard();
 }
