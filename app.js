@@ -2178,7 +2178,7 @@ function renderDashboard() {
     elm.addEventListener("click", () => applyFilterAndClose({ depto: elm.dataset.depto, tipo: "" }));
   });
   el.querySelectorAll("[data-estado-equipo]").forEach((elm) => {
-    elm.addEventListener("click", () => applyFilterAndClose({ estadoEquipo: elm.dataset.estadoEquipo, tipo: "equipo" }));
+    elm.addEventListener("click", () => applyFilterAndClose({ estadoEquipo: elm.dataset.estadoEquipo, tipo: "" }));
   });
   const altaCard = el.querySelector("[data-tipo='alta']");
   if (altaCard) altaCard.addEventListener("click", () => applyFilterAndClose({ tipo: "alta" }));
