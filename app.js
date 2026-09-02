@@ -825,79 +825,21 @@ async function handleAltaPhotoUpload(fileList) {
   }
 }
 
-// ---------- Informe PDF de Altas pendientes ----------
+// ---------- Informe PDF (unificado: equipos + altas pendientes mezclados) ----------
 
-async function generatePdfReportAltas() {
-  const seleccion = currentFilteredAltas;
-  if (seleccion.length === 0) {
-    showToast("No hay altas pendientes para incluir en el informe con este filtro.", true);
-    return;
-  }
-  const btn = $("btnReport");
-  btn.disabled = true;
-  let completed = 0;
-  btn.textContent = `📄 Cargando fotos 0/${seleccion.length}…`;
-
-  const items = await mapWithConcurrency(seleccion, 6, async (a) => {
-    let photoUrl = null;
-    try {
-      const fileId = await resolveCoverFileId(a.photosFolderId, a.fotoPortadaId);
-      if (fileId) photoUrl = await fetchDriveImageCached(fileId);
-    } catch (err) {
-      console.error(err);
-    }
-    completed++;
-    btn.textContent = `📄 Cargando fotos ${completed}/${seleccion.length}…`;
-    return { a, photoUrl };
-  });
-
-  btn.textContent = "📄 Generar informe PDF (altas)";
-  btn.disabled = false;
-
-  renderPrintReportAltas(items);
-  await waitForImages($("printReport"));
-  window.print();
-}
-
-function renderPrintReportAltas(items) {
-  const fecha = new Date().toLocaleDateString("es-AR");
-  const perPage = 16;
-  const totalPages = Math.ceil(items.length / perPage);
-  let html = "";
-
-  for (let p = 0; p < totalPages; p++) {
-    const chunk = items.slice(p * perPage, p * perPage + perPage);
-    html += `<div class="report-page">
-      <div class="report-header">
-        <div>
-          <div class="report-title">Informe de altas pendientes</div>
-          <div class="report-sub">INTI Rafaela · Hallazgos sin alta patrimonial oficial</div>
-        </div>
-        <div class="report-date">${fecha} · Pág. ${p + 1}/${totalPages}</div>
+function altaCardHtml(a, photoUrl) {
+  return `<div class="report-card alta">
+    <div class="report-photo">${photoUrl ? `<img src="${photoUrl}">` : "sin foto"}</div>
+    <div class="report-info">
+      <div class="report-row-top">
+        <span class="report-code">📋 ${escapeHtml(a.inventario || "S/D")}</span>
+        <span class="report-verif alta">${escapeHtml(a.fechaDeteccion || "")}</span>
       </div>
-      <div class="report-grid">`;
-
-    chunk.forEach(({ a, photoUrl }) => {
-      html += `<div class="report-card pending">
-        <div class="report-photo">${photoUrl ? `<img src="${photoUrl}">` : "sin foto"}</div>
-        <div class="report-info">
-          <div class="report-row-top">
-            <span class="report-code">${escapeHtml(a.inventario || "S/D")}</span>
-            <span class="report-verif pending">${escapeHtml(a.fechaDeteccion || "")}</span>
-          </div>
-          <div class="report-desc">${escapeHtml(a.descripcion || "(sin descripción)")}</div>
-          <div class="report-meta">${escapeHtml(a.modelo || "S/D")} · ${escapeHtml(a.serie || "S/D")}</div>
-          <div class="report-meta">${escapeHtml(a.departamento || "sin depto.")} · ${escapeHtml(a.nuevoLugar || "sin lugar")}</div>
-        </div>
-      </div>`;
-    });
-
-    html += `</div>
-      <div class="report-footer">${items.length} altas pendientes</div>
-    </div>`;
-  }
-
-  $("printReport").innerHTML = html;
+      <div class="report-desc">${escapeHtml(a.descripcion || "(sin descripción)")}</div>
+      <div class="report-meta">${escapeHtml(a.modelo || "S/D")} · ${escapeHtml(a.serie || "S/D")}</div>
+      <div class="report-meta">${escapeHtml(a.departamento || "sin depto.")} · ${escapeHtml(a.nuevoLugar || "sin lugar")}</div>
+    </div>
+  </div>`;
 }
 
 // ---------- Filtros ----------
@@ -1087,9 +1029,6 @@ function renderList() {
   altaMatches.forEach((a) => grid.appendChild(buildAltaCard(a, true)));
 
   $("emptyState").classList.toggle("hidden", filtered.length > 0 || altaMatches.length > 0);
-
-  // El botón de informe se adapta a qué se está mirando.
-  $("btnReport").textContent = f.tipo === "alta" ? "📄 Generar informe PDF (altas)" : "📄 Generar informe PDF";
 }
 
 function updateProgressCounter() {
@@ -1896,36 +1835,75 @@ function verifLabel(v) {
   return "Pendiente";
 }
 
+function equipoCardHtml(e, photoUrl) {
+  const v = e.estadoVerificacion || "";
+  const cls = v === "Encontrado" ? "ok" : v === "No encontrado" ? "missing" : "pending";
+  const lugar = e.nuevoLugar || e.ubicacion || "sin lugar";
+  return `<div class="report-card ${cls}">
+    <div class="report-photo">${photoUrl ? `<img src="${photoUrl}">` : "sin foto"}</div>
+    <div class="report-info">
+      <div class="report-row-top">
+        <span class="report-code">${escapeHtml(displayCode(e))}${e.anio ? " · " + escapeHtml(e.anio) : ""}</span>
+        <span class="report-verif ${cls}">${verifLabel(v)}</span>
+      </div>
+      <div class="report-desc">${escapeHtml(e.descripcion || "(sin descripción)")}</div>
+      <div class="report-meta">${escapeHtml(e.categoria || "sin categoría")} · ${escapeHtml(e.modelo || "S/D")} · ${escapeHtml(e.serie || "S/D")}</div>
+      <div class="report-meta">${escapeHtml(e.departamento || "sin depto.")} · ${escapeHtml(lugar)}</div>
+      <div class="report-estado-equipo">${escapeHtml(e.estadoEquipo || "sin estado")}</div>
+    </div>
+  </div>`;
+}
+
+// Informe único: mezcla equipos y altas pendientes exactamente como los
+// mezcla la lista filtrada en pantalla — nunca deja afuera lo que se ve.
 async function generatePdfReport() {
-  const seleccion = currentFilteredEquipos;
-  if (seleccion.length === 0) {
-    showToast("No hay equipos para incluir en el informe con este filtro.", true);
+  const seleccionEquipos = currentFilteredEquipos;
+  const seleccionAltas = currentFilteredAltas;
+  const totalItems = seleccionEquipos.length + seleccionAltas.length;
+  if (totalItems === 0) {
+    showToast("No hay registros para incluir en el informe con este filtro.", true);
     return;
   }
 
   const btn = $("btnReport");
   btn.disabled = true;
-  const totalGeneral = equipos.length;
+  const totalGeneral = equipos.length + altasPendientes.length;
   let completed = 0;
-  btn.textContent = `📄 Cargando fotos 0/${seleccion.length}…`;
-
-  const items = await mapWithConcurrency(seleccion, 6, async (e) => {
-    let photoUrl = null;
-    try {
-      const fileId = await getCoverPhotoFileId(e);
-      if (fileId) photoUrl = await fetchDriveImageCached(fileId);
-    } catch (err) {
-      console.error(err);
-    }
+  const marcarProgreso = () => {
     completed++;
-    btn.textContent = `📄 Cargando fotos ${completed}/${seleccion.length}…`;
-    return { e, photoUrl };
-  });
+    btn.textContent = `📄 Cargando fotos ${completed}/${totalItems}…`;
+  };
+  btn.textContent = `📄 Cargando fotos 0/${totalItems}…`;
+
+  const [itemsEquipos, itemsAltas] = await Promise.all([
+    mapWithConcurrency(seleccionEquipos, 6, async (e) => {
+      let photoUrl = null;
+      try {
+        const fileId = await getCoverPhotoFileId(e);
+        if (fileId) photoUrl = await fetchDriveImageCached(fileId);
+      } catch (err) {
+        console.error(err);
+      }
+      marcarProgreso();
+      return { tipo: "equipo", e, photoUrl };
+    }),
+    mapWithConcurrency(seleccionAltas, 6, async (a) => {
+      let photoUrl = null;
+      try {
+        const fileId = await resolveCoverFileId(a.photosFolderId, a.fotoPortadaId);
+        if (fileId) photoUrl = await fetchDriveImageCached(fileId);
+      } catch (err) {
+        console.error(err);
+      }
+      marcarProgreso();
+      return { tipo: "alta", a, photoUrl };
+    }),
+  ]);
 
   btn.textContent = "📄 Generar informe PDF";
   btn.disabled = false;
 
-  renderPrintReport(items, totalGeneral);
+  renderPrintReport([...itemsEquipos, ...itemsAltas], totalGeneral);
   await waitForImages($("printReport"));
   window.print();
 }
@@ -1946,6 +1924,7 @@ function renderPrintReport(items, totalGeneral) {
   const fecha = new Date().toLocaleDateString("es-AR");
   const perPage = 16;
   const totalPages = Math.ceil(items.length / perPage);
+  const cantAltas = items.filter((it) => it.tipo === "alta").length;
   let html = "";
 
   for (let p = 0; p < totalPages; p++) {
@@ -1953,34 +1932,19 @@ function renderPrintReport(items, totalGeneral) {
     html += `<div class="report-page">
       <div class="report-header">
         <div>
-          <div class="report-title">Informe de relevamiento de equipos</div>
+          <div class="report-title">Informe de relevamiento${cantAltas ? " (incluye altas pendientes 📋)" : ""}</div>
           <div class="report-sub">INTI Rafaela · ${escapeHtml(filtro)}</div>
         </div>
         <div class="report-date">${fecha} · Pág. ${p + 1}/${totalPages}</div>
       </div>
       <div class="report-grid">`;
 
-    chunk.forEach(({ e, photoUrl }) => {
-      const v = e.estadoVerificacion || "";
-      const cls = v === "Encontrado" ? "ok" : v === "No encontrado" ? "missing" : "pending";
-      const lugar = e.nuevoLugar || e.ubicacion || "sin lugar";
-      html += `<div class="report-card ${cls}">
-        <div class="report-photo">${photoUrl ? `<img src="${photoUrl}">` : "sin foto"}</div>
-        <div class="report-info">
-          <div class="report-row-top">
-            <span class="report-code">${escapeHtml(displayCode(e))}${e.anio ? " · " + escapeHtml(e.anio) : ""}</span>
-            <span class="report-verif ${cls}">${verifLabel(v)}</span>
-          </div>
-          <div class="report-desc">${escapeHtml(e.descripcion || "(sin descripción)")}</div>
-          <div class="report-meta">${escapeHtml(e.categoria || "sin categoría")} · ${escapeHtml(e.modelo || "S/D")} · ${escapeHtml(e.serie || "S/D")}</div>
-          <div class="report-meta">${escapeHtml(e.departamento || "sin depto.")} · ${escapeHtml(lugar)}</div>
-          <div class="report-estado-equipo">${escapeHtml(e.estadoEquipo || "sin estado")}</div>
-        </div>
-      </div>`;
+    chunk.forEach((it) => {
+      html += it.tipo === "alta" ? altaCardHtml(it.a, it.photoUrl) : equipoCardHtml(it.e, it.photoUrl);
     });
 
     html += `</div>
-      <div class="report-footer">${items.length} de ${totalGeneral} equipos filtrados</div>
+      <div class="report-footer">${items.length} de ${totalGeneral} registros filtrados${cantAltas ? ` (${cantAltas} altas pendientes 📋)` : ""}</div>
     </div>`;
   }
 
@@ -2280,10 +2244,7 @@ $("filterNuevoLugar").addEventListener("change", renderList);
 $("filterEstadoEquipo").addEventListener("change", renderList);
 $("filterVerificacion").addEventListener("change", renderList);
 $("filterTipoRegistro").addEventListener("change", renderList);
-$("btnReport").addEventListener("click", () => {
-  if ($("filterTipoRegistro").value === "alta") generatePdfReportAltas();
-  else generatePdfReport();
-});
+$("btnReport").addEventListener("click", generatePdfReport);
 $("btnScan").addEventListener("click", openScanner);
 $("btnCloseScanner").addEventListener("click", closeScanner);
 $("btnManual").addEventListener("click", openManual);
